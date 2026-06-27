@@ -83,10 +83,14 @@ pub async fn create_connection(
         tokio::spawn(async move {
             for model_id in &model_list {
                 if priors_only {
-                    // register_with_prior is called inside calibrate anyway, but
-                    // we skip the probe step by not calling calibrate at all —
-                    // priors are seeded when the gateway first resolves the model.
-                    info!(model = model_id, "priors-only mode — skipping probes");
+                    match calibration.register_priors_only(cid.clone(), model_id).await {
+                        Ok(profile) => info!(
+                            model = model_id,
+                            source = %profile.calibration_source,
+                            "priors-only profile registered"
+                        ),
+                        Err(e) => tracing::warn!(model = model_id, "priors-only registration failed: {e}"),
+                    }
                 } else {
                     match calibration.calibrate(cid.clone(), model_id).await {
                         Ok(profile) => info!(

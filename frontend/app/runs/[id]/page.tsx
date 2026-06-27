@@ -14,12 +14,13 @@ export default function RunPage({ params }: Props) {
   const { id } = use(params);
   const [run, setRun] = useState<RunSummary | null>(null);
   const [trace, setTrace] = useState<TraceEntry[]>([]);
+  const [plan, setPlan] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"dag" | "timeline">("dag");
 
   useEffect(() => {
-    Promise.all([api.getRun(id), api.getRunTrace(id)])
-      .then(([r, t]) => { setRun(r); setTrace(t); })
+    Promise.all([api.getRun(id), api.getRunTrace(id), api.getRunPlan(id)])
+      .then(([r, t, p]) => { setRun(r); setTrace(t); setPlan(p); })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -84,7 +85,7 @@ export default function RunPage({ params }: Props) {
 
       {tab === "dag" && (
         <div className="card p-0 overflow-hidden" style={{ height: "480px" }}>
-          <TraceDAG trace={trace} />
+          <TraceDAG trace={trace} planGraph={plan} />
         </div>
       )}
       {tab === "timeline" && <TraceTimeline trace={trace} />}

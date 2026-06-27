@@ -3,6 +3,7 @@
 pub mod client;
 pub mod error;
 pub mod fallback;
+pub mod genai_adapter;
 pub mod providers;
 pub mod stream;
 pub mod translation;

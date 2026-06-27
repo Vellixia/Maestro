@@ -19,13 +19,14 @@ use uuid::Uuid;
 use crate::{
     error::{GatewayError, Result},
     fallback::{classify_error, AvailabilityCache, ErrorClass},
+    genai_adapter::{is_supported as genai_supported, GenaiAdapter},
     providers::{registry::ProviderRegistry, registry::WireFormat},
     stream::pipe_sse_stream,
     translation::{decode_response, encode_request},
     types::{ChatRequest, GatewayResponse},
 };
 use storage::{
-    repos::{ConnectionRepo, UsageRepo},
+    repos::{CapabilityProfileRepo, ConnectionRepo, UsageRepo},
     Db,
 };
 
@@ -46,10 +47,12 @@ impl Default for GatewayConfig {
 
 pub struct GatewayClient {
     http: Client,
+    genai: GenaiAdapter,
     registry: Arc<ProviderRegistry>,
     availability: Arc<AvailabilityCache>,
     connections: ConnectionRepo,
     usage: UsageRepo,
+    profiles: CapabilityProfileRepo,
     #[allow(dead_code)]
     config: GatewayConfig,
 }
@@ -63,10 +66,12 @@ impl GatewayClient {
 
         Self {
             http,
+            genai: GenaiAdapter::new(),
             registry,
             availability: Arc::new(AvailabilityCache::new()),
             connections: ConnectionRepo::new(db.clone()),
-            usage: UsageRepo::new(db),
+            usage: UsageRepo::new(db.clone()),
+            profiles: CapabilityProfileRepo::new(db),
             config,
         }
     }
@@ -102,6 +107,14 @@ impl GatewayClient {
             .connections
             .get(&core_types::ConnectionId(connection_id.to_string()))
             .await?;
+
+        if genai_supported(&conn.provider_tag) {
+            let api_key = extract_api_key(&conn.credentials)
+                .ok_or_else(|| GatewayError::Config("No API key in credentials".into()))?;
+            let mut genai_req = req;
+            genai_req.model = model_id.to_string();
+            return self.genai.chat_with_key(model_id, &api_key, genai_req).await;
+        }
 
         let provider_config = self
             .registry
@@ -148,6 +161,22 @@ impl GatewayClient {
 
             let api_key = extract_api_key(&conn.credentials)
                 .ok_or_else(|| GatewayError::Config("No API key in credentials".into()))?;
+
+            // Use genai for providers it supports natively (openai, anthropic, gemini)
+            if genai_supported(&provider_tag) {
+                match self.genai.chat_with_key(&model_id, &api_key, per_model_req.clone()).await {
+                    Ok(resp) => {
+                        self.availability.mark_success(&conn.connection_id).await;
+                        return Ok(resp);
+                    }
+                    Err(e) => {
+                        warn!(connection_id = %conn.connection_id, error = %e, "Genai error, falling back");
+                        self.availability.mark_rate_limited(&conn.connection_id).await;
+                        last_error = Some(e);
+                        continue;
+                    }
+                }
+            }
 
             let body = encode_request(&per_model_req, &provider_config.wire_format)?;
 
@@ -229,6 +258,12 @@ impl GatewayClient {
                         let response = decode_response(body_value, &provider_config.wire_format)?;
 
                         // Record usage asynchronously — don't block the response path.
+                        let cost_usd = self.compute_cost(
+                            &conn.connection_id,
+                            &model_id,
+                            response.usage.prompt_tokens,
+                            response.usage.completion_tokens,
+                        ).await;
                         let usage_repo = self.usage.clone_with_db();
                         let usage_record = storage::repos::usage::StoredUsage {
                             id: None,
@@ -240,7 +275,7 @@ impl GatewayClient {
                             endpoint: "/v1/chat/completions".into(),
                             prompt_tokens: response.usage.prompt_tokens as i64,
                             completion_tokens: response.usage.completion_tokens as i64,
-                            cost_usd: 0.0, // TODO: compute from pricing
+                            cost_usd,
                             status: "ok".into(),
                             ts: Utc::now(),
                         };
@@ -259,6 +294,18 @@ impl GatewayClient {
         Err(last_error.unwrap_or(GatewayError::NoAvailableConnections))
     }
 
+    /// Look up pricing from the capability profile and compute cost.
+    async fn compute_cost(&self, connection_id: &str, model_id: &str, prompt_tokens: u32, completion_tokens: u32) -> f64 {
+        match self.profiles.get(connection_id, model_id).await {
+            Ok(Some(profile)) => {
+                let in_cost = (prompt_tokens as f64 / 1_000_000.0) * profile.ops.cost_in_per_m;
+                let out_cost = (completion_tokens as f64 / 1_000_000.0) * profile.ops.cost_out_per_m;
+                in_cost + out_cost
+            }
+            _ => 0.0,
+        }
+    }
+
     /// Internal: run one HTTP call against a single pre-chosen connection.
     async fn dispatch_single_connection(
         &self,
@@ -273,6 +320,13 @@ impl GatewayClient {
 
         let api_key = extract_api_key(&conn.credentials)
             .ok_or_else(|| GatewayError::Config("No API key in credentials".into()))?;
+
+        // Use genai for providers it supports natively
+        if genai_supported(&provider_config.kind_tag) {
+            let mut genai_req = req.clone();
+            genai_req.model = model_id.to_string();
+            return self.genai.chat_with_key(model_id, &api_key, genai_req).await;
+        }
 
         let body = encode_request(req, &provider_config.wire_format)?;
         let url = build_url(&provider_config.base_url, &provider_config.wire_format, model_id);
@@ -325,6 +379,12 @@ impl GatewayClient {
             .map_err(|e| GatewayError::Translation(e.to_string()))?;
         let response = decode_response(body_value, &provider_config.wire_format)?;
 
+        let cost_usd = self.compute_cost(
+            &conn.connection_id,
+            model_id,
+            response.usage.prompt_tokens,
+            response.usage.completion_tokens,
+        ).await;
         let usage_repo = self.usage.clone_with_db();
         let usage_record = storage::repos::usage::StoredUsage {
             id: None,
@@ -336,7 +396,7 @@ impl GatewayClient {
             endpoint: "/v1/chat/completions".into(),
             prompt_tokens: response.usage.prompt_tokens as i64,
             completion_tokens: response.usage.completion_tokens as i64,
-            cost_usd: 0.0,
+            cost_usd,
             status: "ok".into(),
             ts: Utc::now(),
         };

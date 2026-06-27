@@ -134,11 +134,11 @@ Key environment variables — see [`.env.example`](.env.example) for the full li
 | Phase | What it delivers |
 |---|---|
 | **Phase 0** ✅ | Gateway + storage spine + OpenAI-compatible passthrough |
-| **Phase 1** | Capability registry + hybrid calibration (priors + probes + fusion) |
-| **Phase 2** | Single-task router (`auto` model): classifier + router + verifier + escalation |
-| **Phase 3** | Planner + DAG executor + synthesizer (full `/v1/orchestrate`) |
-| **Phase 4** | Learning loop + Trace UI + policy/budget modes + caching |
-| **Phase 5** | Agentic tools, global ILP optimizer, plan-template library |
+| **Phase 1** ✅ | Capability registry + hybrid calibration (priors + probes + fusion) |
+| **Phase 2** ✅ | Single-task router (`auto` model): classifier + router + verifier + escalation |
+| **Phase 3** ✅ | Planner + DAG executor + synthesizer (full `/v1/orchestrate`) |
+| **Phase 4** ◐ | Learning loop (online updates, background recalibration) + Trace UI (React Flow DAG) + policy/budget modes + caching |
+| **Phase 5** ☐ | Agentic tools, global ILP optimizer, plan-template library |
 
 ## Development
 

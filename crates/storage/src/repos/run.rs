@@ -18,6 +18,8 @@ pub struct StoredRun {
     pub total_tokens: i64,
     pub wall_ms: Option<i64>,
     pub error: Option<String>,
+    /// JSON-serialized TaskGraph for DAG visualisation.
+    pub plan_graph: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -83,6 +85,17 @@ impl RunRepo {
             .query("UPDATE run SET status = 'failed', error = $err, completed_at = $now WHERE run_id = $id")
             .bind(("err", err))
             .bind(("now", Utc::now()))
+            .bind(("id", id))
+            .await
+            .map_err(StorageError::Surreal)?;
+        Ok(())
+    }
+
+    pub async fn update_plan(&self, run_id: &str, graph: serde_json::Value) -> Result<()> {
+        let id = run_id.to_string();
+        self.db
+            .query("UPDATE run SET plan_graph = $graph WHERE run_id = $id")
+            .bind(("graph", graph))
             .bind(("id", id))
             .await
             .map_err(StorageError::Surreal)?;

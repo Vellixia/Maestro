@@ -41,6 +41,9 @@ export const api = {
   getRunTrace: (id: string) =>
     get<TraceEntry[]>(`/admin/runs/${id}/trace`),
 
+  getRunPlan: (id: string) =>
+    get<unknown>(`/admin/runs/${id}/plan`),
+
   listProfiles: (connectionId: string) =>
     get<ConnectionProfile[]>(`/admin/connections/${connectionId}/profiles`),
 

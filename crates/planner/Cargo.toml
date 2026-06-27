@@ -8,7 +8,6 @@ core-types = { workspace = true }
 storage = { workspace = true }
 gateway = { workspace = true }
 registry = { workspace = true }
-petgraph = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

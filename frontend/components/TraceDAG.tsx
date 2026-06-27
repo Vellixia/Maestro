@@ -12,6 +12,8 @@ import { TraceEntry } from "@/lib/api";
 
 interface Props {
   trace: TraceEntry[];
+  /** JSON-serialized TaskGraph: { nodes: [{id, depends_on, ...}], edges: [[from, to], ...] } */
+  planGraph: unknown | null;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -21,15 +23,13 @@ const STATUS_COLOR: Record<string, string> = {
   running: "#60a5fa",
 };
 
-export function TraceDAG({ trace }: Props) {
+export function TraceDAG({ trace, planGraph }: Props) {
   const { nodes, edges } = useMemo(() => {
-    // Extract task nodes from trace events.
     const assigned = trace.filter(e => e.event_type === "task_assigned");
     const completed = trace.filter(e => e.event_type === "task_completed");
     const failed = trace.filter(e => e.event_type === "task_failed");
     const escalated = trace.filter(e => e.event_type === "task_escalated");
 
-    // Build a map: task_id → most recent assignment info.
     const taskMap = new Map<string, {
       model: string;
       connection: string;
@@ -103,13 +103,36 @@ export function TraceDAG({ trace }: Props) {
       };
     });
 
-    // There's no direct DAG edge info in trace events — we can't reconstruct
-    // depends_on from trace alone. We show nodes only; edges would need the
-    // plan structure (future: fetch plan from API).
-    const edges: Edge[] = [];
+    // Build edges from plan graph topology if available.
+    let edges: Edge[] = [];
+    if (planGraph && typeof planGraph === "object") {
+      const pg = planGraph as Record<string, unknown>;
+      const graphNodes = pg.nodes as Array<Record<string, unknown>> | undefined;
+      if (graphNodes) {
+        const taskIdSet = new Set(taskIds);
+        for (const n of graphNodes) {
+          const tid = String(n.id ?? "");
+          const deps = n.depends_on as string[] | undefined;
+          if (deps && taskIdSet.has(tid)) {
+            for (const dep of deps) {
+              if (taskIdSet.has(dep)) {
+                edges.push({
+                  id: `${dep}→${tid}`,
+                  source: dep,
+                  target: tid,
+                  type: "smoothstep",
+                  style: { stroke: "#7c3aed", strokeWidth: 1.5 },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: "#7c3aed" },
+                });
+              }
+            }
+          }
+        }
+      }
+    }
 
     return { nodes, edges };
-  }, [trace]);
+  }, [trace, planGraph]);
 
   if (nodes.length === 0) {
     return (
