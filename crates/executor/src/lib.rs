@@ -39,12 +39,6 @@ impl DagExecutor {
         }
     }
 
-    fn semaphore_for(&self, connection_id: &str) -> Arc<Semaphore> {
-        self.conn_semaphores
-            .entry(connection_id.to_string())
-            .or_insert_with(|| Arc::new(Semaphore::new(DEFAULT_CONN_PERMITS)))
-            .clone()
-    }
 }
 
 #[derive(Debug)]
@@ -129,8 +123,7 @@ impl DagExecutor {
                 let run_id_clone = run_id.clone();
                 let trace_tx_clone = trace_tx.clone();
                 let spent_so_far = total_cost_usd;
-                // Grab (or create) a per-connection semaphore.
-                let semaphore = self.semaphore_for(&node.id.0);
+                let conn_semaphores = Arc::clone(&self.conn_semaphores);
 
                 join_set.spawn(async move {
                     execute_node(
@@ -143,7 +136,7 @@ impl DagExecutor {
                         &run_id_clone,
                         trace_tx_clone,
                         spent_so_far,
-                        semaphore,
+                        conn_semaphores,
                         tools,
                     )
                     .await
@@ -204,7 +197,7 @@ async fn execute_node(
     run_id: &RunId,
     trace_tx: Option<mpsc::Sender<TraceEvent>>,
     spent_usd: f64,
-    semaphore: Arc<Semaphore>,
+    conn_semaphores: Arc<dashmap::DashMap<String, Arc<Semaphore>>>,
     tool_executor: Arc<ToolExecutor>,
 ) -> NodeResult {
     let send = |ev: TraceEvent| {
@@ -292,8 +285,12 @@ async fn execute_node(
                 extra: Default::default(),
             };
 
-            // Acquire semaphore permit before making the network call.
-            let _permit = semaphore.acquire().await.ok();
+            // Acquire per-connection semaphore permit before making the network call.
+            let conn_permits = conn_semaphores
+                .entry(profile.connection_id.0.clone())
+                .or_insert_with(|| Arc::new(Semaphore::new(DEFAULT_CONN_PERMITS)))
+                .clone();
+            let _permit = conn_permits.acquire().await.ok();
 
             let resp = match gateway
                 .chat_on_connection(req, &profile.connection_id.0, &profile.model_id)

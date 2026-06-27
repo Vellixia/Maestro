@@ -167,6 +167,26 @@ impl CalibrationEngine {
         Ok(profile)
     }
 
+    /// Register a priors-only profile without running any probes.
+    /// Used when the user opts in to priors_only for faster onboarding.
+    pub async fn register_priors_only(
+        &self,
+        connection_id: ConnectionId,
+        model_id: &str,
+    ) -> Result<CapabilityProfile, CalibrationError> {
+        let (prior_skills, hard, ops) = if let Some(p) = lookup_prior(model_id) {
+            (p.skills.clone(), p.hard.clone(), p.ops.clone())
+        } else {
+            let (sv, _) = neutral_prior();
+            (sv, HardConstraints::default(), OperationalProfile::default())
+        };
+
+        let profile = self.registry
+            .register_with_prior(connection_id, model_id, prior_skills, hard, ops)
+            .await?;
+        Ok(profile)
+    }
+
     /// Light re-probe — only runs probes for a single dimension.
     /// Used by the background refresh cron.
     pub async fn recalibrate_dimension(
