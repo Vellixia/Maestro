@@ -19,6 +19,7 @@ use uuid::Uuid;
 use crate::{
     error::{GatewayError, Result},
     fallback::{classify_error, AvailabilityCache, ErrorClass},
+    genai_adapter::{is_supported as genai_supported, GenaiAdapter},
     providers::{registry::ProviderRegistry, registry::WireFormat},
     stream::pipe_sse_stream,
     translation::{decode_response, encode_request},
@@ -46,6 +47,7 @@ impl Default for GatewayConfig {
 
 pub struct GatewayClient {
     http: Client,
+    genai: GenaiAdapter,
     registry: Arc<ProviderRegistry>,
     availability: Arc<AvailabilityCache>,
     connections: ConnectionRepo,
@@ -63,6 +65,7 @@ impl GatewayClient {
 
         Self {
             http,
+            genai: GenaiAdapter::new(),
             registry,
             availability: Arc::new(AvailabilityCache::new()),
             connections: ConnectionRepo::new(db.clone()),
@@ -102,6 +105,14 @@ impl GatewayClient {
             .connections
             .get(&core_types::ConnectionId(connection_id.to_string()))
             .await?;
+
+        if genai_supported(&conn.provider_tag) {
+            let api_key = extract_api_key(&conn.credentials)
+                .ok_or_else(|| GatewayError::Config("No API key in credentials".into()))?;
+            let mut genai_req = req;
+            genai_req.model = model_id.to_string();
+            return self.genai.chat_with_key(model_id, &api_key, genai_req).await;
+        }
 
         let provider_config = self
             .registry
@@ -148,6 +159,22 @@ impl GatewayClient {
 
             let api_key = extract_api_key(&conn.credentials)
                 .ok_or_else(|| GatewayError::Config("No API key in credentials".into()))?;
+
+            // Use genai for providers it supports natively (openai, anthropic, gemini)
+            if genai_supported(&provider_tag) {
+                match self.genai.chat_with_key(&model_id, &api_key, per_model_req.clone()).await {
+                    Ok(resp) => {
+                        self.availability.mark_success(&conn.connection_id).await;
+                        return Ok(resp);
+                    }
+                    Err(e) => {
+                        warn!(connection_id = %conn.connection_id, error = %e, "Genai error, falling back");
+                        self.availability.mark_rate_limited(&conn.connection_id).await;
+                        last_error = Some(e);
+                        continue;
+                    }
+                }
+            }
 
             let body = encode_request(&per_model_req, &provider_config.wire_format)?;
 
@@ -273,6 +300,13 @@ impl GatewayClient {
 
         let api_key = extract_api_key(&conn.credentials)
             .ok_or_else(|| GatewayError::Config("No API key in credentials".into()))?;
+
+        // Use genai for providers it supports natively
+        if genai_supported(&provider_config.kind_tag) {
+            let mut genai_req = req.clone();
+            genai_req.model = model_id.to_string();
+            return self.genai.chat_with_key(model_id, &api_key, genai_req).await;
+        }
 
         let body = encode_request(req, &provider_config.wire_format)?;
         let url = build_url(&provider_config.base_url, &provider_config.wire_format, model_id);

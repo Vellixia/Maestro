@@ -22,3 +22,4 @@ async-trait = { workspace = true }
 url = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+genai = { workspace = true }
