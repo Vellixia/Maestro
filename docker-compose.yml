@@ -1,0 +1,51 @@
+services:
+  # ── SurrealDB ─────────────────────────────────────────────────────────────
+  surrealdb:
+    image: surrealdb/surrealdb:v2.3.3
+    restart: unless-stopped
+    user: "0"
+    command:
+      - start
+      - --user
+      - root
+      - --pass
+      - ${DB_PASS:-root}
+      - surrealkv:/data/maestro.db
+    volumes:
+      - surrealdb_data:/data
+    ports:
+      - "8000:8000"
+  # ── Maestro API ───────────────────────────────────────────────────────────
+  maestro:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    env_file:
+      - .env
+    environment:
+      SURREALDB_URL: ws://surrealdb:8000
+      DB_USER: root
+      DB_PASS: ${DB_PASS:-root}
+      PORT: 3456
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "3456:3456"
+    depends_on:
+      - surrealdb
+
+  # ── Next.js Frontend ──────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3456}
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    depends_on:
+      - maestro
+
+volumes:
+  surrealdb_data:

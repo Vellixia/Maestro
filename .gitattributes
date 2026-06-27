@@ -1,0 +1,18 @@
+# Normalize line endings to LF on check-in
+* text=auto eol=lf
+
+# Rust
+Cargo.lock -diff -merge
+Cargo.lock linguist-generated
+
+# JavaScript / TypeScript
+package-lock.json -diff -merge
+pnpm-lock.yaml -diff -merge
+yarn.lock -diff -merge
+
+# Binary artifacts
+*.wasm binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.svg text

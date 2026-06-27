@@ -1,0 +1,19 @@
+[package]
+name = "calibration"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+core-types = { workspace = true }
+storage = { workspace = true }
+gateway = { workspace = true }
+registry = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }

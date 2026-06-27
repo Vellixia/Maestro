@@ -1,0 +1,30 @@
+# Rust
+/target
+**/*.rs.bk
+*.pem
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.sqlite
+*.sqlite3
+data/
+
+# Frontend (covered by frontend/.gitignore, listed here as safety net)
+frontend/node_modules
+frontend/.next
+frontend/out/
+frontend/build/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Logs
+*.log

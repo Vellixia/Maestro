@@ -1,0 +1,107 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core-types",
+    "crates/storage",
+    "crates/gateway",
+    "crates/registry",
+    "crates/calibration",
+    "crates/planner",
+    "crates/classifier",
+    "crates/router",
+    "crates/executor",
+    "crates/verifier",
+    "crates/synthesizer",
+    "crates/policy",
+    "crates/tools",
+    "crates/api",
+]
+
+[workspace.package]
+name = "maestro"
+version = "0.1.0"
+edition = "2021"
+authors = ["Maestro"]
+license = "MIT"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# HTTP server
+axum = { version = "0.7", features = ["ws", "macros"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "compression-gzip"] }
+hyper = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+eventsource-stream = "0.2"
+
+# OpenAI schema types (reuse for our own server surface)
+async-openai = "0.27"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Storage
+# kv-rocksdb requires LLVM/clang on Windows; use kv-mem for dev and a remote
+# SurrealDB instance (or WSL/Linux) for production with on-disk persistence.
+surrealdb = { version = "2", features = ["kv-mem"] }
+
+# Graph / DAG
+petgraph = { version = "0.6", features = ["serde-1"] }
+
+# Auth
+jsonwebtoken = "9"
+argon2 = "0.5"
+rand = "0.8"
+
+# Observability / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "1"
+async-trait = "0.1"
+futures = "0.3"
+futures-util = "0.3"
+bytes = "1"
+base64 = "0.22"
+url = "2"
+dotenvy = "0.15"
+config = "0.14"
+dirs = "5"
+sha2 = "0.10"
+hex = "0.4"
+dashmap = "6"
+evalexpr = "11"
+tools = { path = "crates/tools" }
+
+# Workspace crates
+core-types = { path = "crates/core-types" }
+storage = { path = "crates/storage" }
+gateway = { path = "crates/gateway" }
+registry = { path = "crates/registry" }
+calibration = { path = "crates/calibration" }
+planner = { path = "crates/planner" }
+classifier = { path = "crates/classifier" }
+router = { path = "crates/router" }
+executor = { path = "crates/executor" }
+verifier = { path = "crates/verifier" }
+synthesizer = { path = "crates/synthesizer" }
+policy = { path = "crates/policy" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
