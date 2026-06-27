@@ -77,6 +77,18 @@ pub struct TraceEntry {
     pub ts: String,
 }
 
+pub async fn get_run_plan(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let repo = RunRepo::new(state.db.clone());
+    let run = repo.get(&run_id).await.map_err(|e| match e {
+        storage::StorageError::NotFound(_) => ApiError::NotFound(run_id),
+        other => ApiError::Storage(other),
+    })?;
+    Ok(Json(run.plan_graph.unwrap_or(serde_json::Value::Null)))
+}
+
 pub async fn get_run_trace(
     State(state): State<AppState>,
     Path(run_id): Path<String>,

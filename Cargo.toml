@@ -75,6 +75,7 @@ hex = "0.4"
 dashmap = "6"
 genai = "0.6"
 evalexpr = "11"
+bollard = "0.18"
 tools = { path = "crates/tools" }
 
 # Workspace crates

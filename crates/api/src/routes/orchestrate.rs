@@ -57,6 +57,7 @@ pub async fn orchestrate(
         total_tokens: 0,
         wall_ms: None,
         error: None,
+        plan_graph: None,
         created_at: Utc::now(),
         completed_at: None,
     };
@@ -159,6 +160,11 @@ async fn run_pipeline(
         .plan(goal, run_id.clone())
         .await
         .map_err(|e| format!("planning failed: {e}"))?;
+
+    // Persist the plan graph for the Trace DAG visualisation.
+    if let Ok(plan_json) = serde_json::to_value(&graph) {
+        let _ = run_repo.update_plan(&run_id.0, plan_json).await;
+    }
 
     // 2. Execute
     let exec_result = state

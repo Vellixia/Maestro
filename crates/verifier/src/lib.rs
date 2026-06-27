@@ -1,3 +1,5 @@
+mod sandbox;
+
 use core_types::{OutputType, Stakes, VerifyResult};
 use gateway::{
     types::{ChatMessage, ChatRequest, MessageContent, MessageRole},
@@ -28,7 +30,7 @@ pub async fn verify(
             verify_json(response, &parsed_schema)
         }
         OutputType::Math => verify_math(response, instruction),
-        OutputType::Code { .. } => verify_code_syntax(response),
+        OutputType::Code { .. } => verify_code_syntax(response).await,
         OutputType::Classification => {
             // Self-consistency: check if response is a single confident label
             verify_classification(response)
@@ -61,32 +63,79 @@ fn verify_json(response: &str, schema: &Option<serde_json::Value>) -> VerifyResu
     }
 }
 
-fn verify_math(response: &str, _instruction: &str) -> VerifyResult {
-    // Attempt to parse the first number from the response.
-    // A real implementation would re-evaluate the expression; this checks parsability.
-    let has_number = response.split_whitespace().any(|w| {
+fn verify_math(response: &str, instruction: &str) -> VerifyResult {
+    // Extract a numeric value from the response to compare against.
+    let answer = response.split_whitespace().find_map(|w| {
         let clean: String = w.chars().filter(|c| c.is_ascii_digit() || *c == '.' || *c == '-').collect();
-        !clean.is_empty() && clean.parse::<f64>().is_ok()
+        if !clean.is_empty() { clean.parse::<f64>().ok() } else { None }
     });
-    if has_number {
-        VerifyResult::Passed
-    } else {
-        VerifyResult::Failed { reason: "no numeric value found in math response".into() }
+
+    let Some(answer) = answer else {
+        return VerifyResult::Failed { reason: "no numeric value found in math response".into() };
+    };
+
+    // Try to extract and evaluate a mathematical expression from the instruction.
+    // Look for common patterns: "calculate X", "what is X", "evaluate X", or just a bare expression.
+    let expr = extract_expression(instruction);
+
+    match expr {
+        Some(expr_str) => {
+            match meval::eval_str(&expr_str) {
+                Ok(expected) => {
+                    let diff = (answer - expected).abs();
+                    if diff < 0.01 {
+                        VerifyResult::Passed
+                    } else {
+                        VerifyResult::Failed {
+                            reason: format!("expected ≈{expected:.4}, got {answer:.4} (diff {diff:.4})"),
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Expression unparseable — fall back to just checking a number exists.
+                    VerifyResult::Passed
+                }
+            }
+        }
+        None => {
+            // No expression found — just check a number exists (lenient pass).
+            VerifyResult::Passed
+        }
     }
 }
 
-fn verify_code_syntax(response: &str) -> VerifyResult {
+/// Attempt to extract a mathematical expression from an instruction string.
+fn extract_expression(text: &str) -> Option<String> {
+    // Try common prefixes: "calculate ...", "what is ...", "evaluate ...", "compute ..."
+    let prefixes = ["calculate", "what is", "evaluate", "compute", "solve"];
+    let lower = text.to_lowercase();
+    for prefix in &prefixes {
+        if let Some(idx) = lower.find(prefix) {
+            let after = text[idx + prefix.len()..].trim();
+            // Remove trailing punctuation and whitespace.
+            let cleaned: String = after.trim_end_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace()).to_string();
+            if !cleaned.is_empty() && cleaned.bytes().any(|b| b.is_ascii_digit() || b == b'x' || b == b'+' || b == b'-' || b == b'*' || b == b'/' || b == b'^') {
+                return Some(cleaned);
+            }
+        }
+    }
+    // Fallback: look for the first line that contains a math-like expression.
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.bytes().any(|b| b == b'+' || b == b'*' || b == b'/' || b == b'^') {
+            let cleaned: String = trimmed.trim_end_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace()).to_string();
+            return Some(cleaned);
+        }
+    }
+    None
+}
+
+async fn verify_code_syntax(response: &str) -> VerifyResult {
     let code = strip_fences(response);
-    // Phase 2: basic structural checks (balanced braces, non-empty).
-    // Full execution sandbox deferred to Phase 3 (Docker / wasmtime).
     if code.trim().is_empty() {
         return VerifyResult::Failed { reason: "empty code response".into() };
     }
-    // Check brace/bracket balance.
-    if !balanced(&code) {
-        return VerifyResult::Failed { reason: "unbalanced braces/brackets in code".into() };
-    }
-    VerifyResult::Passed
+    sandbox::verify_code(&code, "python").await
 }
 
 fn verify_classification(response: &str) -> VerifyResult {
@@ -200,23 +249,6 @@ fn strip_fences(text: &str) -> String {
     }
 }
 
-fn balanced(code: &str) -> bool {
-    let mut depth: i32 = 0;
-    for ch in code.chars() {
-        match ch {
-            '{' | '(' | '[' => depth += 1,
-            '}' | ')' | ']' => {
-                depth -= 1;
-                if depth < 0 {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-    depth == 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +269,21 @@ mod tests {
     fn math_with_number_passes() {
         let result = verify_math("The answer is 42", "What is 6*7?");
         assert_eq!(result, VerifyResult::Passed);
+    }
+
+    #[test]
+    fn math_expression_evaluated() {
+        let result = verify_math("42", "What is 6*7?");
+        assert_eq!(result, VerifyResult::Passed);
+
+        let result = verify_math("The answer is 42", "Calculate 6*7");
+        assert_eq!(result, VerifyResult::Passed);
+    }
+
+    #[test]
+    fn math_wrong_answer_fails() {
+        let result = verify_math("The answer is 100", "What is 6*7?");
+        assert!(matches!(result, VerifyResult::Failed { .. }));
     }
 
     #[test]

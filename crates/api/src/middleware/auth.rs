@@ -4,6 +4,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use storage::repos::ApiKeyRepo;
 
 use crate::state::AppState;
 
@@ -22,10 +23,14 @@ pub async fn auth_layer(
     let provided = extract_key(&headers);
 
     match provided {
-        Some(_key) => {
-            // TODO Phase 1: validate key against storage::api_key table.
-            // For Phase 0, any non-empty key passes when require_api_key is true.
-            Ok(next.run(req).await)
+        Some(key) => {
+            let repo = ApiKeyRepo::new(state.db.clone());
+            let valid = repo.validate(&key).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            if valid {
+                Ok(next.run(req).await)
+            } else {
+                Err(StatusCode::UNAUTHORIZED)
+            }
         }
         None => Err(StatusCode::UNAUTHORIZED),
     }

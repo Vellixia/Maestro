@@ -26,7 +26,7 @@ use crate::{
     types::{ChatRequest, GatewayResponse},
 };
 use storage::{
-    repos::{ConnectionRepo, UsageRepo},
+    repos::{CapabilityProfileRepo, ConnectionRepo, UsageRepo},
     Db,
 };
 
@@ -52,6 +52,7 @@ pub struct GatewayClient {
     availability: Arc<AvailabilityCache>,
     connections: ConnectionRepo,
     usage: UsageRepo,
+    profiles: CapabilityProfileRepo,
     #[allow(dead_code)]
     config: GatewayConfig,
 }
@@ -69,7 +70,8 @@ impl GatewayClient {
             registry,
             availability: Arc::new(AvailabilityCache::new()),
             connections: ConnectionRepo::new(db.clone()),
-            usage: UsageRepo::new(db),
+            usage: UsageRepo::new(db.clone()),
+            profiles: CapabilityProfileRepo::new(db),
             config,
         }
     }
@@ -256,6 +258,12 @@ impl GatewayClient {
                         let response = decode_response(body_value, &provider_config.wire_format)?;
 
                         // Record usage asynchronously — don't block the response path.
+                        let cost_usd = self.compute_cost(
+                            &conn.connection_id,
+                            &model_id,
+                            response.usage.prompt_tokens,
+                            response.usage.completion_tokens,
+                        ).await;
                         let usage_repo = self.usage.clone_with_db();
                         let usage_record = storage::repos::usage::StoredUsage {
                             id: None,
@@ -267,7 +275,7 @@ impl GatewayClient {
                             endpoint: "/v1/chat/completions".into(),
                             prompt_tokens: response.usage.prompt_tokens as i64,
                             completion_tokens: response.usage.completion_tokens as i64,
-                            cost_usd: 0.0, // TODO: compute from pricing
+                            cost_usd,
                             status: "ok".into(),
                             ts: Utc::now(),
                         };
@@ -284,6 +292,18 @@ impl GatewayClient {
         }
 
         Err(last_error.unwrap_or(GatewayError::NoAvailableConnections))
+    }
+
+    /// Look up pricing from the capability profile and compute cost.
+    async fn compute_cost(&self, connection_id: &str, model_id: &str, prompt_tokens: u32, completion_tokens: u32) -> f64 {
+        match self.profiles.get(connection_id, model_id).await {
+            Ok(Some(profile)) => {
+                let in_cost = (prompt_tokens as f64 / 1_000_000.0) * profile.ops.cost_in_per_m;
+                let out_cost = (completion_tokens as f64 / 1_000_000.0) * profile.ops.cost_out_per_m;
+                in_cost + out_cost
+            }
+            _ => 0.0,
+        }
     }
 
     /// Internal: run one HTTP call against a single pre-chosen connection.
@@ -359,6 +379,12 @@ impl GatewayClient {
             .map_err(|e| GatewayError::Translation(e.to_string()))?;
         let response = decode_response(body_value, &provider_config.wire_format)?;
 
+        let cost_usd = self.compute_cost(
+            &conn.connection_id,
+            model_id,
+            response.usage.prompt_tokens,
+            response.usage.completion_tokens,
+        ).await;
         let usage_repo = self.usage.clone_with_db();
         let usage_record = storage::repos::usage::StoredUsage {
             id: None,
@@ -370,7 +396,7 @@ impl GatewayClient {
             endpoint: "/v1/chat/completions".into(),
             prompt_tokens: response.usage.prompt_tokens as i64,
             completion_tokens: response.usage.completion_tokens as i64,
-            cost_usd: 0.0,
+            cost_usd,
             status: "ok".into(),
             ts: Utc::now(),
         };
