@@ -81,7 +81,7 @@ async fn orchestrate_streaming(
     let state_clone = state.clone();
 
     tokio::spawn(async move {
-        run_pipeline(&state_clone, &goal, policy, run_id_clone, Some(trace_tx)).await;
+        let _ = run_pipeline(&state_clone, &goal, policy, run_id_clone, Some(trace_tx)).await;
     });
 
     let event_stream = ReceiverStream::new(trace_rx)
@@ -129,7 +129,7 @@ async fn run_pipeline(
     trace_tx: Option<mpsc::Sender<TraceEvent>>,
 ) -> Result<OrchestrateResult, String> {
     let run_repo = RunRepo::new(state.db.clone());
-    let trace_repo = TraceEventRepo::new(state.db.clone());
+    let _trace_repo = TraceEventRepo::new(state.db.clone());
 
     // Intercept trace events: fan-out to both SSE channel and SurrealDB.
     let (inner_tx, mut inner_rx) = mpsc::channel::<TraceEvent>(256);

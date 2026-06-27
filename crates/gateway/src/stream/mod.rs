@@ -2,7 +2,6 @@
 //! re-emit as canonical ChatStreamChunk items.
 
 use crate::{
-    error::{GatewayError, Result},
     providers::registry::WireFormat,
     translation::decode_stream_chunk,
     types::ChatStreamChunk,

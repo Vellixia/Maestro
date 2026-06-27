@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::warn;
 
 /// Per-connection in-memory availability state.
 /// SurrealDB is the persistent source of truth; this is the hot-path cache.

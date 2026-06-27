@@ -149,7 +149,7 @@ impl TaskGraph {
 
     /// Returns groups of tasks that can run in parallel (all deps satisfied by previous groups).
     pub fn parallel_groups(&self) -> Result<Vec<Vec<&TaskNode>>, String> {
-        use std::collections::{HashMap, HashSet};
+        use std::collections::HashMap;
 
         let order = self.topological_order()?;
         let mut level: HashMap<&str, usize> = HashMap::new();

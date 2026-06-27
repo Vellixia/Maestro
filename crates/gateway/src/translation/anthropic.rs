@@ -152,7 +152,7 @@ pub fn decode(body: serde_json::Value) -> Result<ChatResponse> {
         other => other.to_string(),
     });
 
-    let mut message = ChatMessage {
+    let _message = ChatMessage {
         role: MessageRole::Assistant,
         content: MessageContent::Text(content),
         tool_call_id: None,

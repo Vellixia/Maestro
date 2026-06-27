@@ -214,8 +214,10 @@ mod tests {
     };
 
     fn profile(model_id: &str, reasoning: f32, cost_per_m: f64, is_free: bool) -> CapabilityProfile {
-        let mut skills = SkillVector::default();
-        skills.reasoning = SkillScore { score: reasoning, confidence: 0.8, n_samples: 10 };
+        let skills = SkillVector {
+            reasoning: SkillScore { score: reasoning, confidence: 0.8, n_samples: 10 },
+            ..SkillVector::default()
+        };
         CapabilityProfile {
             id: model_id.into(),
             connection_id: ConnectionId("conn1".into()),

@@ -14,10 +14,10 @@ pub fn is_permitted(profile: &CapabilityProfile, policy: &Policy) -> bool {
     }
 
     // Explicit allow list (non-empty = whitelist mode).
-    if !policy.allowed_providers.is_empty() {
-        if !policy.allowed_providers.iter().any(|a| a == conn || a == &profile.model_id) {
-            return false;
-        }
+    if !policy.allowed_providers.is_empty()
+        && !policy.allowed_providers.iter().any(|a| a == conn || a == &profile.model_id)
+    {
+        return false;
     }
 
     // FreeOnly mode: only zero-cost tiers pass.

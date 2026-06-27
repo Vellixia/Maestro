@@ -2,10 +2,7 @@
 
 use crate::{
     error::{GatewayError, Result},
-    types::{
-        ChatChoice, ChatDelta, ChatMessage, ChatRequest, ChatResponse, ChatStreamChunk,
-        MessageContent, MessageRole, StreamChoice, TokenUsage,
-    },
+    types::{ChatRequest, ChatResponse, ChatStreamChunk},
 };
 
 pub fn encode(req: &ChatRequest) -> Result<serde_json::Value> {

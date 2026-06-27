@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(3456);
 
-    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| {
+    let _data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| {
         dirs_next().unwrap_or_else(|| std::path::PathBuf::from(".")).to_string_lossy().into()
     });
 

@@ -484,9 +484,9 @@ fn primary_skill_hint(hints: &[String]) -> SkillDimension {
     SkillDimension::Reasoning
 }
 
-fn next_in_ladder<'a>(
+fn next_in_ladder(
     current_model: &str,
-    ladder: &'a [CapabilityProfile],
+    ladder: &[CapabilityProfile],
 ) -> Option<String> {
     // Find the model after the current one in the ladder.
     let mut found = false;

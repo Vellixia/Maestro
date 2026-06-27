@@ -13,7 +13,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use reqwest::Client;
 use serde_json::Value;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -22,9 +22,8 @@ use crate::{
     providers::{registry::ProviderRegistry, registry::WireFormat},
     stream::pipe_sse_stream,
     translation::{decode_response, encode_request},
-    types::{ChatRequest, ChatResponse, GatewayResponse},
+    types::{ChatRequest, GatewayResponse},
 };
-use core_types::{ConnectionId, ProviderKind};
 use storage::{
     repos::{ConnectionRepo, UsageRepo},
     Db,
@@ -51,6 +50,7 @@ pub struct GatewayClient {
     availability: Arc<AvailabilityCache>,
     connections: ConnectionRepo,
     usage: UsageRepo,
+    #[allow(dead_code)]
     config: GatewayConfig,
 }
 
@@ -111,7 +111,7 @@ impl GatewayClient {
         let mut per_model_req = req;
         per_model_req.model = model_id.to_string();
 
-        self.dispatch_single_connection(&conn, &per_model_req, &provider_config, model_id).await
+        self.dispatch_single_connection(&conn, &per_model_req, provider_config, model_id).await
     }
 
     pub async fn chat(&self, req: ChatRequest) -> Result<GatewayResponse> {
@@ -214,7 +214,7 @@ impl GatewayClient {
                     }
 
                     self.availability.mark_success(&conn.connection_id).await;
-                    let latency_ms = start.elapsed().as_millis() as u64;
+                    let _latency_ms = start.elapsed().as_millis() as u64;
 
                     if is_streaming {
                         let fmt = provider_config.wire_format.clone();

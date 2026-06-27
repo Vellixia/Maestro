@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 pub mod client;
 pub mod error;
 pub mod fallback;
